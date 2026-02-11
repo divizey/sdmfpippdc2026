@@ -1,0 +1,8 @@
+{
+  "name": "sdmfpippdc-dashboard",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0"
+  }
+}
