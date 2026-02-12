@@ -3042,7 +3042,6 @@
 
                                   <div class="mobilisation-footer">
                                     <span class="doc-types-chip"><i class="ri-megaphone-fill"></i><span>Mobilisation</span></span>
-                                    <span class="doc-types-chip"><i class="ri-file-list-3-line"></i><span>Autres: <b id="mobilisation-others">0</b></span></span>
                                   </div>
                                 </div>
                             </div>
@@ -5440,9 +5439,7 @@
       // Mobilisation: barre + % + autres
       const mobDenom = Math.max(imp, 1);
       const mobPct = Math.round((mobilisation / mobDenom) * 100);
-      const mobOthers = Math.max(0, imp - mobilisation);
       setText('#mobilisation-pct', mobPct + '%');
-      setText('#mobilisation-others', mobOthers);
       setWidth('#mobilisation-bar', mobPct + '%');
 
       const denom = Math.max(imp, 1);
@@ -5465,26 +5462,37 @@
       const todayKey = dateKey(new Date());
       const monthKey = todayKey.slice(0,7); // YYYY-MM
 
-      const countDay = (items, field) => items.filter(x => {
-        const v = x[field];
+      // Tous les compteurs "Aujourd'hui / Ce mois" sont désormais basés
+      // UNIQUEMENT sur la date de saisie (createdAt), pour que les 4 cartes
+      // réagissent immédiatement après enregistrement, quel que soit le champ date métier.
+      const countDay = (items) => items.filter(x => {
+        const v = x.createdAt;
         if (!v) return false;
         return dateKey(v) === todayKey;
       }).length;
 
-      const countMonth = (items, field) => items.filter(x => {
-        const v = x[field];
+      const countMonth = (items) => items.filter(x => {
+        const v = x.createdAt;
         if (!v) return false;
         const dk = dateKey(v);
         return dk && dk.slice(0,7) === monthKey;
       }).length;
 
       // Imputations
-      setText('#imp-day', countDay(state.data.imputations, 'imputationDate'));
-      setText('#imp-month', countMonth(state.data.imputations, 'imputationDate'));
+      setText('#imp-day', countDay(state.data.imputations));
+      setText('#imp-month', countMonth(state.data.imputations));
 
       // Arrivées
-      setText('#arr-day', countDay(state.data.arrivals, 'date'));
-      setText('#arr-month', countMonth(state.data.arrivals, 'date'));
+      setText('#arr-day', countDay(state.data.arrivals));
+      setText('#arr-month', countMonth(state.data.arrivals));
+
+      // Conventions
+      setText('#conv-day', countDay(state.data.conventions));
+      setText('#conv-month', countMonth(state.data.conventions));
+
+      // Commissions
+      setText('#comm-day', countDay(state.data.commissions));
+      setText('#comm-month', countMonth(state.data.commissions));
 
       // ===== Références (Arrivées) — Totaux =====
       const norm = (v) => String(v || '').trim();
