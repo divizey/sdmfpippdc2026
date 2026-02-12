@@ -880,6 +880,14 @@
       border: 1px solid var(--stroke);
       border-radius: 18px;
       background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 62%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Activity chart tweaks (line/bar mode) */
+    .activity-chart-wrapper.bar-mode{
+      padding: 8px 10px 6px;
+      background: linear-gradient(180deg, rgba(37,99,235,.05), transparent 62%);
     }
     body.light-theme .activity-chart-wrapper{
       background: linear-gradient(180deg, rgba(2,6,23,.035), transparent 62%);
@@ -887,6 +895,23 @@
     }
     .activity-chart-wrapper canvas{width: 100% !important; height: 320px !important; max-width:100% !important;}
     canvas{max-width:100% !important;}
+
+    /* Pulse animation on chart update */
+    .activity-chart-wrapper.chart-pulse::after{
+      content:"";
+      position:absolute;
+      inset:-20%;
+      background: radial-gradient(circle at 50% 30%, rgba(37,99,235,.22), transparent 55%),
+                  radial-gradient(circle at 70% 70%, rgba(6,182,212,.18), transparent 60%);
+      opacity:0;
+      pointer-events:none;
+      animation: chartPulse .65s ease-out;
+    }
+    @keyframes chartPulse{
+      0%{ opacity:.0; transform: scale(.98); }
+      35%{ opacity:.65; }
+      100%{ opacity:0; transform: scale(1.03); }
+    }
 
     /* Activity summary: legend (stylé + différencié par liste) */
     .activity-legend{
@@ -2885,6 +2910,9 @@
                               <button class="range-option" type="button" data-days="14"><span>14 derniers jours</span><span style="color:var(--muted2); font-weight:900; font-size:12px;">2 semaines</span></button>
                               <button class="range-option" type="button" data-days="30"><span>30 derniers jours</span><span style="color:var(--muted2); font-weight:900; font-size:12px;">1 mois</span></button>
                               <button class="range-option" type="button" data-days="90"><span>90 derniers jours</span><span style="color:var(--muted2); font-weight:900; font-size:12px;">3 mois</span></button>
+                              <div class="range-menu__title" style="margin-top:6px;">Graphique</div>
+                              <button class="range-option" type="button" data-chart="line"><span>Courbes</span><span style="color:var(--muted2); font-weight:900; font-size:12px;">Lignes</span></button>
+                              <button class="range-option" type="button" data-chart="bar"><span>Barres</span><span style="color:var(--muted2); font-weight:900; font-size:12px;">Histogramme</span></button>
                             </div>
 
                             <button class="btn btn--outline" id="btn-refresh-dashboard">
@@ -4037,6 +4065,7 @@
         conventionTab: 'all',
         // Période du tableau de bord (utilisée par le graphe "Résumé des activités")
         dashRangeDays: 30,
+        activityChartMode: 'line',
         charts: {}
       },
       confirmAction: null
@@ -5390,12 +5419,17 @@
       if (hint){
         hint.textContent = `Total global • Graph: ${days} jours`;
       }
-      // mark active option
+      // mark active options (days + chart mode)
       const menu = $('#dash-range-menu');
       if (menu){
         $$('.range-option', menu).forEach(btn => {
           const d = Number(btn.getAttribute('data-days') || 0);
-          btn.classList.toggle('is-active', d === days);
+          const cm = btn.getAttribute('data-chart');
+          if (cm){
+            btn.classList.toggle('is-active', cm === state.ui.activityChartMode);
+          } else {
+            btn.classList.toggle('is-active', d === days);
+          }
         });
       }
     }
@@ -6339,12 +6373,12 @@
 
       // Synchronisation immédiate: compteurs (jour/mois) + badges AVANT affichage de la liste
       updateBadgesAndStats();
+      renderDashboard();
 
       activateSection('imputation-list');
       // Force re-render pour éviter tout décalage visuel (pagination/recherche)
       renderImputationsTable();
       // Garder le dashboard prêt (au prochain retour)
-      // renderDashboard() sera appelé automatiquement quand on revient sur le dashboard
     }
 
     function handleArrivalSubmit(e){
@@ -6388,6 +6422,7 @@
 
       // Synchronisation immédiate: compteurs (jour/mois) + badges AVANT affichage de la liste
       updateBadgesAndStats();
+      renderDashboard();
 
       activateSection('arrival-list');
       // Force re-render pour éviter tout décalage visuel (pagination/recherche)
@@ -6440,6 +6475,7 @@
 
       // Synchronisation immédiate: compteurs (jour/mois) + badges AVANT affichage de la liste
       updateBadgesAndStats();
+      renderDashboard();
 
       activateSection('convention-list');
       // Force re-render pour éviter tout décalage visuel (pagination/recherche)
@@ -6484,6 +6520,7 @@
 
       // Synchronisation immédiate: compteurs (jour/mois) + badges AVANT affichage de la liste
       updateBadgesAndStats();
+      renderDashboard();
 
       activateSection('commission-list');
       // Force re-render pour éviter tout décalage visuel (pagination/recherche)
@@ -6691,6 +6728,18 @@
           }
         }catch(e){}
 
+        // Pulse animation (subtle) for activity chart update
+        try{
+          const wrapper = document.querySelector('.activity-chart-wrapper');
+          if (wrapper){
+            wrapper.classList.remove('chart-pulse');
+            void wrapper.offsetWidth;
+            wrapper.classList.add('chart-pulse');
+          }
+        }catch(e){}
+
+        // Always rebuild legends and charts on fresh data
+
         // if canvases not present, skip
         const impCanvas = $('#imputationsChart');
         const arrCanvas = $('#arrivalsChart');
@@ -6726,7 +6775,7 @@
             const d = new Date(now.getTime() - i*msDay);
             const key = dateKey(d);
             labels.push(d.toLocaleDateString('fr-FR', { weekday:'short' }));
-            values.push(items.filter(x => dateKey(x[field]) === key).length);
+            values.push(items.filter(x => dateKey(x[field] || x.createdAt) === key).length);
           }
           return { labels, values };
         };
@@ -6742,7 +6791,7 @@
             const d = new Date(now.getTime() - i*msDay);
             const key = dateKey(d);
             labels.push(d.toLocaleDateString('fr-FR', { weekday:'short' }));
-            values.push(state.data.conventions.filter(x => dateKey(x.createdAt) === key).length);
+            values.push(state.data.conventions.filter(x => dateKey(x.createdAt || x.date) === key).length);
           }
           return { labels, values };
         })();
@@ -6840,9 +6889,9 @@
               const key = dateKey(d);
               labels.push(d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' }));
 
-              series.imp.push(state.data.imputations.filter(x => dateKey(x.imputationDate) === key).length);
-              series.arr.push(state.data.arrivals.filter(x => dateKey(x.date) === key).length);
-              series.conv.push(state.data.conventions.filter(x => dateKey(x.createdAt) === key).length);
+              series.imp.push(state.data.imputations.filter(x => dateKey(x.imputationDate || x.createdAt) === key).length);
+              series.arr.push(state.data.arrivals.filter(x => dateKey(x.date || x.createdAt) === key).length);
+              series.conv.push(state.data.conventions.filter(x => dateKey(x.createdAt || x.date) === key).length);
               // Graph commissions: activité récente par date de création (cohérent avec les compteurs jour/mois)
               series.comm.push(state.data.commissions.filter(x => dateKey(x.createdAt) === key).length);
             }
@@ -6862,6 +6911,30 @@
             const tickColor = toRgba(text, isLightTheme ? 0.86 : 0.78);
             const gridColor = toRgba(stroke, isLightTheme ? 0.34 : 0.20);
 
+            const valueLabelsPlugin = {
+              id: 'valueLabelsPlugin',
+              afterDatasetsDraw(chart){
+                if (state.ui.activityChartMode !== 'line') return;
+                if (days > 30) return;
+                const { ctx } = chart;
+                ctx.save();
+                chart.data.datasets.forEach((dataset, i) => {
+                  const meta = chart.getDatasetMeta(i);
+                  meta.data.forEach((pt, idx) => {
+                    const v = dataset.data[idx];
+                    if (v === null || v === undefined) return;
+                    if (v === 0) return;
+                    ctx.fillStyle = tickColor;
+                    ctx.font = '800 10px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText(String(v), pt.x, pt.y - 6);
+                  });
+                });
+                ctx.restore();
+              }
+            };
+
             const mk = (label, data, colorVar, fillAlpha, dash=[]) => {
               const c = getCssVar(colorVar) || primary;
               const grad = ctx.createLinearGradient(0, 0, 0, 320);
@@ -6874,33 +6947,56 @@
                 borderColor: toRgba(c, .95),
                 backgroundColor: grad,
                 fill: true,
-                tension: .36,
-                borderWidth: 2.5,
+                tension: .32,
+                borderWidth: 3,
                 borderDash: dash,
-                pointRadius: showPoints ? 1.6 : 0,
+                pointRadius: showPoints ? 2.2 : 0,
                 pointHoverRadius: 4,
                 pointHitRadius: 10,
-                pointBackgroundColor: toRgba(c, .95),
+                pointBackgroundColor: toRgba(c, .98),
                 pointBorderColor: toRgba(c, 1),
                 pointBorderWidth: 0
               };
             };
 
+            const mkBar = (label, data, colorVar) => {
+              const c = getCssVar(colorVar) || primary;
+              return {
+                label,
+                data,
+                borderRadius: 8,
+                backgroundColor: toRgba(c, .78),
+                borderColor: toRgba(c, 1),
+                borderWidth: 0,
+                maxBarThickness: 24
+              };
+            };
+
+            const mode = state.ui.activityChartMode || 'line';
+            const datasets = (mode === 'bar')
+              ? [
+                  mkBar('Imputations', series.imp, '--primary2'),
+                  mkBar('Arrivées', series.arr, '--secondary'),
+                  mkBar('Conventions', series.conv, '--tertiary'),
+                  mkBar('Commissions', series.comm, '--quaternary')
+                ]
+              : [
+                  mk('Imputations', series.imp, '--primary2', .24, []),
+                  mk('Arrivées', series.arr, '--secondary', .22, []),
+                  mk('Conventions', series.conv, '--tertiary', .22, [6,4]),
+                  mk('Commissions', series.comm, '--quaternary', .22, [2,4])
+                ];
+
             state.ui.charts.activity = new Chart(ctx, {
-              type: 'line',
+              type: (mode === 'bar' ? 'bar' : 'line'),
               data: {
                 labels,
-                datasets: [
-                  mk('Imputations', series.imp, '--primary2', .20, []),
-                  mk('Arrivées', series.arr, '--secondary', .18, []),
-                  mk('Conventions', series.conv, '--tertiary', .18, [6,4]),
-                  mk('Commissions', series.comm, '--quaternary', .18, [2,4])
-                ]
+                datasets
               },
               options: {
                 responsive:true,
                 maintainAspectRatio:false,
-                animation: { duration: 650, easing: 'easeOutQuart' },
+                animation: { duration: 700, easing: 'easeOutQuart' },
                 interaction: { mode: 'index', intersect: false },
                 layout: { padding: { left: 8, right: 10, top: 8, bottom: 0 } },
                 plugins:{
@@ -6923,6 +7019,7 @@
                 },
                 scales:{
                   x:{
+                    stacked: mode === 'bar',
                     ticks:{
                       color: tickColor,
                       font: { size: 11, weight: '800' },
@@ -6934,6 +7031,7 @@
                     grid:{ color: gridColor, drawBorder:false, tickLength: 0 }
                   },
                   y:{
+                    stacked: mode === 'bar',
                     beginAtZero:true,
                     suggestedMax,
                     ticks:{
@@ -6946,8 +7044,14 @@
                     grid:{ color: gridColor, drawBorder:false }
                   }
                 }
-              }
+              },
+              plugins: [valueLabelsPlugin]
             });
+
+            const activityWrapper = document.querySelector('.activity-chart-wrapper');
+            if (activityWrapper){
+              activityWrapper.classList.toggle('bar-mode', mode === 'bar');
+            }
 
             // Update hint to match range
             updateDashRangeUI();
@@ -7529,6 +7633,15 @@
 
         $$('.range-option', rangeMenu).forEach(btn => {
           btn.addEventListener('click', () => {
+            const chartMode = btn.getAttribute('data-chart');
+            if (chartMode){
+              state.ui.activityChartMode = chartMode;
+              updateDashRangeUI();
+              closeRangeMenu();
+              buildOrUpdateCharts();
+              return;
+            }
+
             const days = Number(btn.getAttribute('data-days') || 30);
             state.ui.dashRangeDays = days;
             updateDashRangeUI();
